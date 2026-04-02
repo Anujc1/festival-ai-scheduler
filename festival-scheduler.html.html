@@ -68,9 +68,9 @@
       console.log('Updated events:', events);
     }
 
-    async function loadEvents() {
+async function loadEvents() {
   try {
-    const res = await axios.get('http://localhost:3001/api/events');
+    const res = await axios.get('https://festival-ai-scheduler-production.up.railway.app/api/events');
     calendar.removeAllEvents();
     res.data.forEach(e => {
       calendar.addEvent({
@@ -80,9 +80,9 @@
         end: e.end_time
       });
     });
-    alert('✅ Loaded ' + res.data.length + ' events from PostgreSQL!');
+    alert('✅ Loaded ' + res.data.length + ' events from CLOUD DB!');
   } catch(err) {
-    alert('❌ Backend not running! Is "node server.js" active?');
+    alert('❌ Backend error: ' + err.message);
   }
 }
 

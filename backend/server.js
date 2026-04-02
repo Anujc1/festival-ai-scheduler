@@ -27,7 +27,7 @@ app.get('/api/events', async (req, res) => {
 
 sequelize.sync().then(() => {
   app.listen(3001, () => {
-    console.log('🚀 Backend on http://localhost:3001');
+    console.log('🚀 https://festival-ai-scheduler-production.up.railway.app"');
     console.log('✅ Connected to PostgreSQL!');
   });
 });
