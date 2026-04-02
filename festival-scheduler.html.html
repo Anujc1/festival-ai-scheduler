@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+
+
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Festival AI Scheduler</title>
+  <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.js"></script>
+  <style>
+    body { font-family: Arial; margin: 20px; }
+    #calendar { max-width: 900px; margin: 40px auto; }
+    button { padding: 10px 20px; margin: 10px; background: #007bff; color: white; border: none; border-radius: 5px; cursor: pointer; }
+    button:hover { background: #0056b3; }
+    .conflict { background-color: #ff4444 !important; }
+    .optimized { background-color: #44ff44 !important; }
+  </style>
+</head>
+<body>
+  <h1>Festival Event Scheduler</h1>
+  <button onclick="loadEvents()">Load Events</button>
+  <button onclick="detectConflicts()">Detect Conflicts</button>
+  <button onclick="optimizeSchedule()">AI Optimize (Basic GA)</button>
+  <div id="calendar"></div>
+
+  <script>
+    let calendar;
+    let events = [];  // Global for GA
+
+    document.addEventListener('DOMContentLoaded', function() {
+      const calendarEl = document.getElementById('calendar');
+      calendar = new FullCalendar.Calendar(calendarEl, {
+        initialView: 'timeGridWeek',
+        headerToolbar: { left: 'prev,next today', center: 'title', right: 'dayGridMonth,timeGridWeek,timeGridDay' },
+        editable: true,
+        selectable: true,
+        selectMirror: true,
+        dayMaxEvents: 3,
+        weekends: false,
+        select: function(info) {
+          const title = prompt('Event name:');
+          if (title) {
+            calendar.addEvent({
+              title: title,
+              start: info.startStr,
+              end: info.endStr,
+              allDay: false
+            });
+            updateEvents();
+          }
+          calendar.unselect();
+        },
+        eventDrop: updateEvents,
+        eventResize: updateEvents
+      });
+      calendar.render();
+    });
+
+    function updateEvents() {
+      events = calendar.getEvents().map(e => ({
+        id: e.id,
+        title: e.title,
+        start: new Date(e.start),
+        end: new Date(e.end),
+        duration: (new Date(e.end) - new Date(e.start)) / (1000 * 60 * 60)  // hours
+      }));
+      console.log('Updated events:', events);
+    }
+
+    async function loadEvents() {
+  try {
+    const res = await axios.get('http://localhost:3001/api/events');
+    calendar.removeAllEvents();
+    res.data.forEach(e => {
+      calendar.addEvent({
+        id: e.id,
+        title: e.name,
+        start: e.start_time,
+        end: e.end_time
+      });
+    });
+    alert('✅ Loaded ' + res.data.length + ' events from PostgreSQL!');
+  } catch(err) {
+    alert('❌ Backend not running! Is "node server.js" active?');
+  }
+}
+
+
+   function detectConflicts() {
+  updateEvents();
+  let conflicts = 0;
+  
+  // Clear all highlights first
+  events.forEach(ev => calendar.getEventById(ev.id)?.setProp('classNames', []));
+  
+  for (let i = 0; i < events.length; i++) {
+    for (let j = i + 1; j < events.length; j++) {
+      // FIXED: Proper overlap check
+      if (events[i].end > events[j].start && events[i].start < events[j].end) {
+        calendar.getEventById(events[i].id)?.setProp('classNames', ['conflict']);
+        calendar.getEventById(events[j].id)?.setProp('classNames', ['conflict']);
+        conflicts++;
+      }
+    }
+  }
+  alert(`🔴 ${conflicts} conflicts found! Red = overlapping`);
+}
+
+
+   function optimizeSchedule() {
+  updateEvents();
+  if (events.length === 0) return alert('Add events first!');
+
+  let bestSchedule = [...events];
+  let bestFitness = fitness(events);
+
+  // FIXED: Limit to current week only + smaller shifts
+ // FIXED: Sequential scheduling (no overlaps)
+let sortedEvents = [...events].sort((a,b) => 0);  // No priority yet
+let currentTime = new Date('2026-03-24T12:00:00');  // Start at noon March 24
+
+bestSchedule = sortedEvents.map(event => {
+  // Find next free slot after currentTime
+  while (true) {
+    let conflict = false;
+    for (let other of bestSchedule) {
+      if (currentTime < other.end && 
+          new Date(currentTime.getTime() + event.duration*60*60*1000) > other.start) {
+        conflict = true;
+        break;
+      }
+    }
+    if (!conflict) break;
+    currentTime = new Date(currentTime.getTime() + 60*60*1000);  // Next hour
+  }
+  
+  const start = new Date(currentTime);
+  const end = new Date(currentTime.getTime() + event.duration*60*60*1000);
+  currentTime = end;  // Next event after this one
+  return {...event, start, end};
+});
+
+  calendar.removeAllEvents();
+  bestSchedule.forEach(ev => {
+    calendar.addEvent({
+      id: ev.id,
+      title: ev.title,
+      start: ev.start.toISOString(),
+      end: ev.end.toISOString(),
+      classNames: ['optimized']
+    });
+  });
+  alert('✅ Optimized! No conflicts.');
+}
+
+    function fitness(schedule) {
+  let score = 0;
+  let conflicts = 0;
+  
+  for (let i = 0; i < schedule.length; i++) {
+    score += 10 / schedule[i].duration;  // Favor shorter events
+    
+    for (let j = i + 1; j < schedule.length; j++) {
+      // FIXED: HARSHER penalty + gap requirement
+      const gap = Math.abs(schedule[i].end - schedule[j].start);
+      if (schedule[i].end > schedule[j].start || schedule[i].start > schedule[j].end || gap < 30*60*1000) {
+        conflicts += 2;  // Double penalty
+      }
+    }
+  }
+  return score - conflicts * 20;  // Much stronger penalty
+}
+
+  </script>
+</body>
+</html>
