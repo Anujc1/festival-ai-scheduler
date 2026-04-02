@@ -2,7 +2,12 @@ const express = require('express');
 const { Sequelize, DataTypes } = require('sequelize');
 const cors = require('cors');
 
-const sequelize = new Sequelize('postgres://postgres:password@localhost:5432/festival_scheduler');
+// FIXED (CLOUD):
+const sequelize = new Sequelize(process.env.DATABASE_URL, {
+  dialectOptions: {
+    ssl: { require: true, rejectUnauthorized: false }
+  }
+});
 
 const Event = sequelize.define('Event', {
   id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
